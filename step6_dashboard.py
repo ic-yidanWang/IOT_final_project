@@ -164,6 +164,7 @@ TAB_SEL    = {"color": ACC,  "backgroundColor": CARD_BG, "fontWeight": "bold"}
 
 app = Dash(__name__)
 app.title = "Sleep x Microclimate"
+server = app.server  # expose for gunicorn / Render
 
 app.layout = html.Div(
     style={"backgroundColor": PAGE_BG, "minHeight": "100vh",
