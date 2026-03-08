@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+
+# Temporary / duplicate files
+sleep_2026-03-03_empty.csv
+sleep_2026-02-26 - 副本.csv
+insert.xlsx
+sleep_2026-03-03_filled.csv
+insert_filled.csv
+sleep_visualization.png
+weather_visualization.png
+fill_regression.py
+fill_sleep_regression.py
+visualize_sleep.py
