@@ -12,7 +12,7 @@ def get_weather_realtime(lat=51.5074, lon=-0.1278):
         "lat": lat,
         "lon": lon,
         "appid": API_KEY,
-        "units": "metric"  # 摄氏度
+        "units": "metric"  
     }
     
     response = requests.get(url, params=params)
@@ -22,13 +22,13 @@ def get_weather_realtime(lat=51.5074, lon=-0.1278):
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "temperature": data["main"]["temp"],
         "humidity": data["main"]["humidity"],
-        "precipitation": data.get("rain", {}).get("1h", 0.0),  # 过去1小时降雨mm
+        "precipitation": data.get("rain", {}).get("1h", 0.0), 
         "wind_speed": data["wind"]["speed"]
     }])
     
     return df
 
-def collect_and_save(output_file="weather_log.csv", interval_minutes=15):
+def collect_and_save(output_file="../data/weather_log.csv", interval_minutes=15):
     while True:
         df = get_weather_realtime()
         df.to_csv(output_file, mode="a", header=not pd.io.common.file_exists(output_file), index=False)

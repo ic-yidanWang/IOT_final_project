@@ -1,355 +1,497 @@
 """
-Step 6 — Interactive Dashboard (Plotly Dash)
-Project: Nocturnal Microclimate vs Sleep Architecture
-------------------------------------------------------
-Run:  python step6_dashboard.py
-Open: http://127.0.0.1:8050
-
-Tabs:
-  Tab 1 — Night Explorer   : hypnogram + env variables for selected night
-  Tab 2 — Cross-Night View : trends, stage proportions, scatter correlations
-  Tab 3 — Model Insights   : correlation heatmap + RF feature importance + transition matrix
+Step 6 - Streamlit Dashboard
 """
 
 import os
 import numpy as np
 import pandas as pd
-from scipy import stats
-from collections import defaultdict
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from dash import Dash, dcc, html, Input, Output, callback
+from scipy import stats
+from scipy.stats import spearmanr, norm as norm_dist
+from collections import defaultdict
+import streamlit as st
 
-# ── Load ──────────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Sleep x Microclimate",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 BASE = os.path.dirname(os.path.abspath(__file__))
-raw  = pd.read_csv(os.path.join(BASE, "data", "all_nights_raw.csv"))
-summ = pd.read_csv(os.path.join(BASE, "data", "nightly_summary.csv"))
-raw["timestamp"]   = pd.to_datetime(raw["timestamp"])
-summ["night_date"] = pd.to_datetime(summ["night_date"])
 
+@st.cache_data
+def load_data():
+    raw  = pd.read_csv(os.path.join(BASE, "data", "all_nights_raw.csv"))
+    summ = pd.read_csv(os.path.join(BASE, "data", "nightly_summary.csv"))
+    raw["timestamp"]   = pd.to_datetime(raw["timestamp"])
+    summ["night_date"] = pd.to_datetime(summ["night_date"])
+    raw["stage_numeric"] = raw["sleep_stage"].map({"REM": 1, "Core": 2, "Deep": 3})
+    summ["label"] = summ["night_date"].apply(lambda d: f"{d.month}/{d.day}")
+    return raw, summ
+
+raw, summ = load_data()
+N = len(summ)
 STAGE_COLOR = {"Deep": "#1565C0", "Core": "#42A5F5", "REM": "#CE93D8"}
-raw["stage_numeric"] = raw["sleep_stage"].map({"REM": 0, "Core": 1, "Deep": 2})
+STAGE_Y     = {"Deep": 3, "Core": 2, "REM": 1}
 
-nights  = sorted(raw["night_date"].unique())
-xlabs   = [f"{pd.to_datetime(d).month}/{pd.to_datetime(d).day}" for d in summ["night_date"]]
+ENV_VARS = [
+    ("inside_temperature_mean",  "Indoor Temp"),
+    ("inside_humidity_mean",     "Indoor Humidity"),
+    ("outdoor_temperature_mean", "Outdoor Temp"),
+    ("outdoor_humidity_mean",    "Outdoor Humidity"),
+    ("wind_speed_mean",          "Wind Speed"),
+]
+SLEEP_VARS = [
+    ("mean_sleep_score", "Sleep Score"),
+    ("pct_deep",         "Deep %"),
+    ("pct_rem",          "REM %"),
+    ("sleep_duration_h", "Duration (h)"),
+]
 
-# Pre-compute RF importances
-B_FEATURES = ["inside_temperature","inside_humidity",
-               "outdoor_temperature","wind_speed","elapsed_min"]
-B_LABELS   = ["Indoor Temp","Indoor Humidity","Outdoor Temp","Wind Speed","Elapsed Min"]
-X_b = StandardScaler().fit_transform(raw[B_FEATURES].values)
-rf  = RandomForestClassifier(n_estimators=200, max_depth=6,
-                              random_state=42, class_weight="balanced")
-rf.fit(X_b, raw["sleep_stage"].values)
-importances = rf.feature_importances_
+# Sidebar
+st.sidebar.title("Navigation")
+page = st.sidebar.radio(
+    "",
+    ["Overview", "Night Explorer", "Correlation", "Sleep Structure", "Power Analysis"],
+)
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**Study period:** Feb 26 - Mar 11, 2026")
+st.sidebar.markdown(f"**Nights recorded:** {N}")
+st.sidebar.markdown(f"**Total epochs:** {len(raw)}")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Theme helpers
-# ══════════════════════════════════════════════════════════════════════════════
-PAGE_BG = "#13131f"
-CARD_BG = "#1e1e2e"
-TEXT    = "#e0e0f0"
-ACC     = "#7c83fd"
+# ============================================================
+# PAGE 1 - OVERVIEW
+# ============================================================
+if page == "Overview":
+    st.title("Nocturnal Microclimate x Sleep Architecture")
+    st.caption("Personal IoT sensing study · London · Feb-Mar 2026")
+    st.markdown("---")
 
-CARD = {"backgroundColor": CARD_BG, "borderRadius": "10px",
-        "padding": "16px", "marginBottom": "16px"}
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Nights Recorded", N)
+    c2.metric("Avg Sleep Duration", f"{summ['sleep_duration_h'].mean():.1f} h")
+    c3.metric("Avg Deep Sleep", f"{summ['pct_deep'].mean():.1f} %")
+    c4.metric("Avg Indoor Temp", f"{summ['inside_temperature_mean'].mean():.1f} C")
+    c5.metric("Avg Outdoor Temp", f"{summ['outdoor_temperature_mean'].mean():.1f} C")
+    st.markdown("---")
 
-def dark(**kw):
-    return dict(paper_bgcolor=CARD_BG, plot_bgcolor=PAGE_BG,
-                font=dict(color=TEXT, size=11),
-                margin=dict(l=50, r=20, t=35, b=40), **kw)
+    st.subheader("Nightly Summary Table")
+    display_df = summ[[
+        "night_date","sleep_duration_h","mean_sleep_score",
+        "pct_deep","pct_core","pct_rem",
+        "inside_temperature_mean","inside_humidity_mean",
+        "outdoor_temperature_mean","wind_speed_mean"
+    ]].copy()
+    display_df.columns = [
+        "Night","Duration (h)","Sleep Score",
+        "Deep %","Core %","REM %",
+        "Indoor Temp (C)","Indoor Humidity (%)",
+        "Outdoor Temp (C)","Wind Speed (m/s)"
+    ]
+    display_df["Night"] = display_df["Night"].dt.strftime("%b %d")
+    st.dataframe(
+        display_df.style
+            .format({"Duration (h)":"{:.2f}","Sleep Score":"{:.3f}",
+                     "Deep %":"{:.1f}","Core %":"{:.1f}","REM %":"{:.1f}",
+                     "Indoor Temp (C)":"{:.1f}","Indoor Humidity (%)":"{:.1f}",
+                     "Outdoor Temp (C)":"{:.1f}","Wind Speed (m/s)":"{:.2f}"})
+            .background_gradient(subset=["Deep %"], cmap="Blues")
+            .background_gradient(subset=["Sleep Score"], cmap="Greens"),
+        use_container_width=True, height=530
+    )
+    st.markdown("---")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Static figure builders (called once at startup)
-# ══════════════════════════════════════════════════════════════════════════════
-def make_trend_fig():
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=xlabs, y=summ["sleep_duration_h"], name="Duration (h)",
-                             line=dict(color="#5C6BC0", width=2.5), mode="lines+markers",
-                             marker=dict(size=7)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=xlabs, y=summ["mean_sleep_score"], name="Sleep Score",
-                             line=dict(color="#26A69A", width=2.5), mode="lines+markers",
-                             marker=dict(size=7)), secondary_y=True)
-    fig.update_layout(**dark(legend=dict(x=0.01, y=0.99), height=300))
-    fig.update_yaxes(title_text="Hours", secondary_y=False)
-    fig.update_yaxes(title_text="Score", secondary_y=True)
-    return fig
+    st.subheader("Cross-Night Trends")
+    col_left, col_right = st.columns(2)
+    with col_left:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=summ["label"], y=summ["sleep_duration_h"],
+            name="Duration (h)", mode="lines+markers",
+            line=dict(color="#5C6BC0", width=2.5), marker=dict(size=8)))
+        fig.add_trace(go.Scatter(x=summ["label"], y=summ["mean_sleep_score"],
+            name="Sleep Score", mode="lines+markers",
+            line=dict(color="#26A69A", width=2.5), marker=dict(size=8), yaxis="y2"))
+        fig.update_layout(title="Sleep Duration & Score",
+            yaxis=dict(title="Hours"),
+            yaxis2=dict(title="Score", overlaying="y", side="right"),
+            legend=dict(x=0.01, y=0.99), height=320, margin=dict(t=40,b=30))
+        st.plotly_chart(fig, use_container_width=True)
+    with col_right:
+        fig2 = go.Figure()
+        for stage, col in [("Deep","#1565C0"),("Core","#42A5F5"),("REM","#CE93D8")]:
+            fig2.add_trace(go.Bar(name=stage, x=summ["label"],
+                y=summ[f"pct_{stage.lower()}"], marker_color=col, opacity=0.87))
+        fig2.update_layout(title="Sleep Stage Composition",
+            barmode="stack", yaxis_title="%",
+            legend=dict(x=0.01,y=0.99), height=320, margin=dict(t=40,b=30))
+        st.plotly_chart(fig2, use_container_width=True)
 
-def make_stage_stack():
-    fig = go.Figure()
-    for stage, col in [("Deep","#1565C0"),("Core","#42A5F5"),("REM","#CE93D8")]:
-        fig.add_trace(go.Bar(name=stage, x=xlabs,
-                             y=summ[f"pct_{stage.lower()}"],
-                             marker_color=col, opacity=0.87))
-    fig.update_layout(**dark(barmode="stack", yaxis_title="%",
-                              legend=dict(x=0.01, y=0.99), height=300))
-    return fig
+    col_l2, col_r2 = st.columns(2)
+    with col_l2:
+        fig3 = go.Figure()
+        fig3.add_trace(go.Scatter(x=summ["label"], y=summ["inside_temperature_mean"],
+            name="Indoor Temp", mode="lines+markers",
+            line=dict(color="#EF5350", width=2), marker=dict(size=7)))
+        fig3.add_trace(go.Scatter(x=summ["label"], y=summ["outdoor_temperature_mean"],
+            name="Outdoor Temp", mode="lines+markers",
+            line=dict(color="#FF7043", width=2, dash="dash"), marker=dict(size=7)))
+        fig3.update_layout(title="Temperature Comparison",
+            yaxis_title="C", height=300, margin=dict(t=40,b=30))
+        st.plotly_chart(fig3, use_container_width=True)
+    with col_r2:
+        fig4 = go.Figure()
+        fig4.add_trace(go.Scatter(x=summ["label"], y=summ["inside_humidity_mean"],
+            name="Indoor Humidity", mode="lines+markers",
+            line=dict(color="#42A5F5", width=2), marker=dict(size=7)))
+        fig4.add_trace(go.Scatter(x=summ["label"], y=summ["outdoor_humidity_mean"],
+            name="Outdoor Humidity", mode="lines+markers",
+            line=dict(color="#5C6BC0", width=2, dash="dash"), marker=dict(size=7)))
+        fig4.update_layout(title="Humidity Comparison",
+            yaxis_title="% RH", height=300, margin=dict(t=40,b=30))
+        st.plotly_chart(fig4, use_container_width=True)
 
-def make_corr_heatmap():
-    cols   = ["inside_temperature_mean","inside_humidity_mean",
-               "outdoor_temperature_mean","wind_speed_mean",
-               "mean_sleep_score","pct_deep","pct_rem","sleep_duration_h"]
-    labels = ["Indoor Temp","Indoor Humid.","Outdoor Temp","Wind Speed",
-               "Sleep Score","Deep %","REM %","Duration"]
-    n = len(cols)
-    mat = np.zeros((n, n))
-    for i, c1 in enumerate(cols):
-        for j, c2 in enumerate(cols):
-            r, _ = stats.spearmanr(summ[c1], summ[c2])
-            mat[i, j] = round(r, 2)
-    fig = go.Figure(go.Heatmap(z=mat, x=labels, y=labels,
-                                colorscale="RdBu_r", zmin=-1, zmax=1,
-                                text=mat, texttemplate="%{text:.2f}",
-                                textfont={"size": 10}))
-    fig.update_layout(**dark(height=420))
-    return fig
+# ============================================================
+# PAGE 2 - NIGHT EXPLORER
+# ============================================================
+elif page == "Night Explorer":
+    st.title("Night Explorer")
+    st.caption("Select a night to view its hypnogram and environmental conditions")
 
-def make_feat_imp():
-    idx = np.argsort(importances)
-    bar_colors = ["#EF5350","#42A5F5","#FF7043","#26A69A","#5C6BC0"]
-    fig = go.Figure(go.Bar(
-        x=importances[idx],
-        y=[B_LABELS[i] for i in idx],
-        orientation="h",
-        marker_color=[bar_colors[i % len(bar_colors)] for i in idx],
-        text=[f"{importances[i]:.3f}" for i in idx],
-        textposition="outside",
-    ))
-    fig.update_layout(**dark(xaxis_title="Feature Importance (Gini)", height=300))
-    return fig
+    night_options = {pd.to_datetime(n).strftime("%b %d, %Y"): n
+                     for n in sorted(raw["night_date"].unique())}
+    selected_label = st.selectbox("Select night:", list(night_options.keys()))
+    selected_night = night_options[selected_label]
 
-def make_transition():
+    grp  = raw[raw["night_date"] == selected_night].copy()
+    srow = summ[summ["night_date"] == pd.to_datetime(selected_night)].iloc[0]
+
+    st.markdown("---")
+    m1,m2,m3,m4,m5,m6 = st.columns(6)
+    m1.metric("Duration",      f"{srow['sleep_duration_h']:.2f} h")
+    m2.metric("Sleep Score",   f"{srow['mean_sleep_score']:.3f}")
+    m3.metric("Deep Sleep",    f"{srow['pct_deep']:.1f} %")
+    m4.metric("REM Sleep",     f"{srow['pct_rem']:.1f} %")
+    m5.metric("Indoor Temp",   f"{srow['inside_temperature_mean']:.1f} C")
+    m6.metric("Indoor Humid.", f"{srow['inside_humidity_mean']:.1f} %")
+    st.markdown("---")
+
+    st.subheader("Sleep Hypnogram")
+    t = grp["elapsed_min"].values
+    stages = grp["sleep_stage"].values
+
+    fig_hyp = go.Figure()
+    for k in range(len(t)):
+        x0, x1 = t[k], t[k]+15
+        y_val = STAGE_Y.get(stages[k], 0)
+        fig_hyp.add_shape(type="rect", x0=x0, x1=x1, y0=0, y1=y_val,
+            fillcolor=STAGE_COLOR.get(stages[k], "#ccc"), opacity=0.55, line_width=0)
+    y_step, x_step = [], []
+    for k in range(len(t)):
+        x_step += [t[k], t[k]+15]
+        y_step += [STAGE_Y.get(stages[k],0), STAGE_Y.get(stages[k],0)]
+    fig_hyp.add_trace(go.Scatter(x=x_step, y=y_step, mode="lines",
+        line=dict(color="#263238", width=2), showlegend=False))
+    for stage, col in STAGE_COLOR.items():
+        fig_hyp.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
+            marker=dict(size=12, color=col, symbol="square"), name=stage))
+    fig_hyp.update_layout(
+        yaxis=dict(tickvals=[1,2,3], ticktext=["REM","Core","Deep"], range=[0.3,3.7]),
+        xaxis_title="Minutes from sleep onset",
+        height=260, margin=dict(t=10,b=40),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=1.1))
+    st.plotly_chart(fig_hyp, use_container_width=True)
+
+    col_env1, col_env2 = st.columns(2)
+    with col_env1:
+        st.subheader("Indoor Environment")
+        fig_ind = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_ind.add_trace(go.Scatter(x=grp["elapsed_min"], y=grp["inside_temperature"],
+            name="Temp (C)", mode="lines+markers",
+            line=dict(color="#EF5350", width=2.5), marker=dict(size=6)), secondary_y=False)
+        fig_ind.add_trace(go.Scatter(x=grp["elapsed_min"], y=grp["inside_humidity"],
+            name="Humidity (%)", mode="lines+markers",
+            line=dict(color="#42A5F5", width=2, dash="dot"), marker=dict(size=6)), secondary_y=True)
+        fig_ind.update_yaxes(title_text="Temp (C)", secondary_y=False)
+        fig_ind.update_yaxes(title_text="Humidity (%)", secondary_y=True)
+        fig_ind.update_layout(height=300, margin=dict(t=20,b=40),
+            legend=dict(x=0.01,y=0.99), xaxis_title="Minutes from sleep onset")
+        st.plotly_chart(fig_ind, use_container_width=True)
+    with col_env2:
+        st.subheader("Outdoor Environment")
+        fig_out = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_out.add_trace(go.Scatter(x=grp["elapsed_min"], y=grp["outdoor_temperature"],
+            name="Outdoor Temp (C)", mode="lines+markers",
+            line=dict(color="#FF7043", width=2.5), marker=dict(size=6)), secondary_y=False)
+        fig_out.add_trace(go.Scatter(x=grp["elapsed_min"], y=grp["wind_speed"],
+            name="Wind Speed (m/s)", mode="lines+markers",
+            line=dict(color="#26A69A", width=2, dash="dot"), marker=dict(size=6)), secondary_y=True)
+        fig_out.update_yaxes(title_text="Temp (C)", secondary_y=False)
+        fig_out.update_yaxes(title_text="Wind Speed (m/s)", secondary_y=True)
+        fig_out.update_layout(height=300, margin=dict(t=20,b=40),
+            legend=dict(x=0.01,y=0.99), xaxis_title="Minutes from sleep onset")
+        st.plotly_chart(fig_out, use_container_width=True)
+
+# ============================================================
+# PAGE 3 - CORRELATION
+# ============================================================
+elif page == "Correlation":
+    st.title("Correlation Analysis")
+    st.caption(f"Spearman rank correlation · n = {N} nights · alpha = 0.05")
+
+    st.subheader("Spearman Correlation Matrix")
+    rows = []
+    for ev, elbl in ENV_VARS:
+        row = {"Variable": elbl}
+        for sv, slbl in SLEEP_VARS:
+            rho, p = spearmanr(summ[ev], summ[sv])
+            sig = "**" if p<0.01 else ("*" if p<0.05 else ("~" if p<0.10 else "ns"))
+            row[slbl] = f"{rho:+.3f} ({sig}, p={p:.3f})"
+        rows.append(row)
+    st.dataframe(pd.DataFrame(rows).set_index("Variable"), use_container_width=True)
+    st.caption("** p<0.01  · * p<0.05 · ~ p<0.10 · ns = not significant")
+
+    st.markdown("---")
+    st.subheader("Scatter: Environment vs Sleep Outcome")
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        env_choice = st.selectbox("Environmental variable:", [e[1] for e in ENV_VARS])
+    with col_s2:
+        slp_choice = st.selectbox("Sleep outcome:", [s[1] for s in SLEEP_VARS])
+
+    ev_col = next(e[0] for e in ENV_VARS if e[1] == env_choice)
+    sv_col = next(s[0] for s in SLEEP_VARS if s[1] == slp_choice)
+    x_vals = summ[ev_col].values
+    y_vals = summ[sv_col].values
+    rho, p = spearmanr(x_vals, y_vals)
+
+    fig_sc = go.Figure()
+    fig_sc.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="markers+text",
+        text=summ["label"], textposition="top right",
+        marker=dict(size=11, color="#5C6BC0", opacity=0.85), name="Nights"))
+    m, b = np.polyfit(x_vals, y_vals, 1)
+    x_line = np.linspace(x_vals.min(), x_vals.max(), 100)
+    fig_sc.add_trace(go.Scatter(x=x_line, y=m*x_line+b, mode="lines",
+        line=dict(color="#EF5350", width=2, dash="dash"), name="Linear fit"))
+    fig_sc.update_layout(
+        title=f"{env_choice} vs {slp_choice}  |  Spearman rho = {rho:+.3f}  (p = {p:.3f})",
+        xaxis_title=env_choice, yaxis_title=slp_choice,
+        height=420, margin=dict(t=50,b=40))
+    st.plotly_chart(fig_sc, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Lag Cross-Correlation (Within-Night)")
+    st.caption("Positive lag = environment leads sleep · Each step = 15 min")
+
+    LAG_VARS = [
+        ("inside_temperature",  "Indoor Temp",    "#EF5350"),
+        ("inside_humidity",     "Indoor Humidity","#FF7043"),
+        ("outdoor_temperature", "Outdoor Temp",   "#42A5F5"),
+        ("wind_speed",          "Wind Speed",     "#26A69A"),
+    ]
+    lags_steps = list(range(-4, 5))
+    lags_min   = [s*15 for s in lags_steps]
+
+    fig_lag = go.Figure()
+    lag_summary = []
+    for col_name, lbl, color in LAG_VARS:
+        rs = []
+        for lag in lags_steps:
+            night_rs = []
+            for _, grp2 in raw.groupby("night_date"):
+                grp2 = grp2.sort_values("elapsed_min").reset_index(drop=True)
+                e_s = grp2[col_name].values
+                s_s = grp2["stage_numeric"].values
+                if lag >= 0:
+                    e = e_s[:-lag] if lag > 0 else e_s
+                    s = s_s[lag:]  if lag > 0 else s_s
+                else:
+                    e = e_s[-lag:]
+                    s = s_s[:len(s_s)+lag]
+                if len(e) > 3:
+                    r, _ = stats.pearsonr(e, s)
+                    night_rs.append(r)
+            rs.append(np.mean(night_rs) if night_rs else 0)
+        best = int(np.argmax(np.abs(rs)))
+        fig_lag.add_trace(go.Scatter(x=lags_min, y=rs, mode="lines+markers",
+            name=lbl, line=dict(color=color, width=2.5), marker=dict(size=7)))
+        fig_lag.add_trace(go.Scatter(x=[lags_min[best]], y=[rs[best]], mode="markers",
+            marker=dict(size=13, color=color, symbol="star"), showlegend=False,
+            hovertemplate=f"{lbl}<br>Peak lag={lags_min[best]} min<br>r={rs[best]:.3f}"))
+        direction = "Env leads Sleep" if lags_min[best]>0 else ("Sleep leads Env" if lags_min[best]<0 else "Contemporaneous")
+        lag_summary.append({"Variable": lbl, "Peak lag (min)": lags_min[best],
+            "Peak r": f"{rs[best]:+.3f}", "Direction": direction})
+
+    fig_lag.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.4)
+    fig_lag.add_vline(x=0, line_dash="dot", line_color="gray", opacity=0.4)
+    fig_lag.update_layout(xaxis_title="Lag (minutes)", yaxis_title="Mean Pearson r",
+        height=360, margin=dict(t=20,b=40), legend=dict(x=0.01,y=0.99))
+    st.plotly_chart(fig_lag, use_container_width=True)
+    st.dataframe(pd.DataFrame(lag_summary).set_index("Variable"), use_container_width=True)
+
+# ============================================================
+# PAGE 4 - SLEEP STRUCTURE
+# ============================================================
+elif page == "Sleep Structure":
+    st.title("Sleep Architecture")
+    st.caption("Stage transition dynamics · Cycle structure · Efficiency metrics")
+
     STAGES = ["Deep","Core","REM"]
     tc = defaultdict(lambda: defaultdict(int))
-    for _, grp in raw.groupby("night_date"):
-        s = grp["sleep_stage"].tolist()
+    for _, grp2 in raw.groupby("night_date"):
+        s = grp2["sleep_stage"].tolist()
         for k in range(len(s)-1):
             tc[s[k]][s[k+1]] += 1
+
     mat, annot = [], []
     for frm in STAGES:
         row, arow = [], []
         total = sum(tc[frm].values())
         for to in STAGES:
-            p = tc[frm][to] / total if total else 0
-            row.append(round(p, 3))
-            arow.append(f"{p:.2f}<br>(n={tc[frm][to]})")
+            p_v = tc[frm][to]/total if total else 0
+            row.append(round(p_v,3))
+            arow.append(f"{p_v:.2f}<br>n={tc[frm][to]}")
         mat.append(row); annot.append(arow)
-    fig = go.Figure(go.Heatmap(
-        z=mat, x=[f"to {s}" for s in STAGES], y=[f"{s}" for s in STAGES],
+
+    st.subheader("Stage Transition Matrix (Pooled across all nights)")
+    fig_tm = go.Figure(go.Heatmap(
+        z=mat, x=[f"to {s}" for s in STAGES], y=STAGES,
         colorscale="Blues", zmin=0, zmax=1,
-        text=annot, texttemplate="%{text}", textfont={"size": 13},
-    ))
-    fig.update_layout(**dark(height=320,
-                              xaxis_title="Next Stage", yaxis_title="Current Stage"))
-    return fig
+        text=annot, texttemplate="%{text}", textfont={"size":14},
+        hovertemplate="From %{y} to %{x}<br>Prob: %{z:.3f}<extra></extra>"))
+    fig_tm.update_layout(xaxis_title="Next Stage", yaxis_title="Current Stage",
+        height=350, margin=dict(t=20,b=40))
+    st.plotly_chart(fig_tm, use_container_width=True)
 
-# Pre-build static figures
-FIG_TREND      = make_trend_fig()
-FIG_STACK      = make_stage_stack()
-FIG_CORR       = make_corr_heatmap()
-FIG_FEAT       = make_feat_imp()
-FIG_TRANSITION = make_transition()
+    st.markdown("---")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Layout
-# ══════════════════════════════════════════════════════════════════════════════
-night_opts = [{"label": pd.to_datetime(n).strftime("%b %d, %Y"), "value": n}
-              for n in nights]
+    def identify_cycles(grp2):
+        stages2 = grp2["sleep_stage"].tolist()
+        elapsed2 = grp2["elapsed_min"].tolist()
+        cycles, cycle_no, i, nrem_start = [], 0, 0, None
+        while i < len(stages2):
+            if stages2[i] in ("Core","Deep") and nrem_start is None:
+                nrem_start = elapsed2[i]
+            if stages2[i] == "REM" and nrem_start is not None:
+                rem_start = elapsed2[i]
+                j = i
+                while j < len(stages2) and stages2[j] == "REM":
+                    j += 1
+                rem_end = elapsed2[j-1]+15
+                cycle_no += 1
+                cycles.append({"cycle_no":cycle_no,"nrem_start":nrem_start,
+                               "rem_start":rem_start,"rem_end":rem_end})
+                nrem_start = None; i = j; continue
+            i += 1
+        return cycles
 
-TAB_STYLE  = {"color": TEXT, "backgroundColor": CARD_BG}
-TAB_SEL    = {"color": ACC,  "backgroundColor": CARD_BG, "fontWeight": "bold"}
+    eff_rows = []
+    for night, grp2 in raw.groupby("night_date"):
+        grp2 = grp2.sort_values("elapsed_min")
+        stages2 = grp2["sleep_stage"].values
+        cycles = identify_cycles(grp2)
+        rem_r  = grp2[grp2["sleep_stage"]=="REM"]
+        deep_r = grp2[grp2["sleep_stage"]=="Deep"]
+        label = f"{pd.to_datetime(night).month}/{pd.to_datetime(night).day}"
+        eff_rows.append({"Night": label,
+            "Deep (min)": int((stages2=="Deep").sum()*15),
+            "Core (min)": int((stages2=="Core").sum()*15),
+            "REM (min)":  int((stages2=="REM").sum()*15),
+            "Cycles": len(cycles),
+            "First REM (min)": int(rem_r["elapsed_min"].iloc[0]) if len(rem_r) else None,
+            "First Deep (min)": int(deep_r["elapsed_min"].iloc[0]) if len(deep_r) else None,
+        })
+    eff_df = pd.DataFrame(eff_rows).set_index("Night")
 
-app = Dash(__name__)
-app.title = "Sleep x Microclimate"
-server = app.server  # expose for gunicorn / Render
+    st.subheader("Efficiency Metrics per Night")
+    st.dataframe(
+        eff_df.style
+            .background_gradient(subset=["Deep (min)"], cmap="Blues")
+            .background_gradient(subset=["REM (min)"],  cmap="Purples")
+            .background_gradient(subset=["Cycles"],     cmap="Greens"),
+        use_container_width=True)
 
-app.layout = html.Div(
-    style={"backgroundColor": PAGE_BG, "minHeight": "100vh",
-           "fontFamily": "Segoe UI, sans-serif", "color": TEXT, "padding": "20px"},
-    children=[
-        html.H2("Nocturnal Microclimate × Sleep Architecture",
-                style={"textAlign": "center", "color": ACC, "marginBottom": "4px"}),
-        html.P("Personal IoT Sensing  ·  9 nights  ·  Feb 26 – Mar 6, 2026",
-               style={"textAlign": "center", "color": "#888", "marginTop": 0, "marginBottom": "18px"}),
+    st.markdown("---")
+    st.subheader("Stage Duration Composition")
+    fig_stack = go.Figure()
+    for stage, col in [("Deep","#1565C0"),("Core","#42A5F5"),("REM","#CE93D8")]:
+        fig_stack.add_trace(go.Bar(name=stage, x=eff_df.index,
+            y=eff_df[f"{stage} (min)"], marker_color=col, opacity=0.87))
+    fig_stack.update_layout(barmode="stack", yaxis_title="Minutes",
+        height=320, margin=dict(t=20,b=40),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=1.06))
+    st.plotly_chart(fig_stack, use_container_width=True)
 
-        dcc.Tabs(value="tab-night",
-                 colors={"border": "#333", "primary": ACC, "background": CARD_BG},
-                 children=[
+# ============================================================
+# PAGE 5 - POWER ANALYSIS
+# ============================================================
+elif page == "Power Analysis":
+    st.title("Statistical Power Analysis")
+    st.caption("Fisher z-transformation method · alpha = 0.05 · Two-tailed")
 
-            # ── Tab 1 ─────────────────────────────────────────────────────────
-            dcc.Tab(label="Night Explorer", value="tab-night",
-                    style=TAB_STYLE, selected_style=TAB_SEL, children=[
-                html.Div(style=CARD, children=[
-                    html.Label("Select a night:", style={"color":"#aaa","fontSize":"13px"}),
-                    dcc.Dropdown(id="night-select", options=night_opts,
-                                 value=str(nights[0]),
-                                 clearable=False,
-                                 style={"width":"300px","color":"#111"}),
-                ]),
-                html.Div(style=CARD, children=[
-                    html.H4("Sleep Hypnogram", style={"color":ACC,"marginTop":0}),
-                    dcc.Graph(id="hypnogram", config={"displayModeBar":False}),
-                ]),
-                html.Div(style={**CARD,"display":"grid",
-                                "gridTemplateColumns":"1fr 1fr","gap":"16px"}, children=[
-                    html.Div([html.H4("Indoor Environment",style={"color":ACC,"marginTop":0}),
-                              dcc.Graph(id="indoor-env",config={"displayModeBar":False})]),
-                    html.Div([html.H4("Outdoor Environment",style={"color":ACC,"marginTop":0}),
-                              dcc.Graph(id="outdoor-env",config={"displayModeBar":False})]),
-                ]),
-            ]),
+    def fisher_z(r):     return np.arctanh(r)
+    def power_from_n(r, n, alpha=0.05):
+        if n <= 3: return 0.0
+        ncp = fisher_z(r) * np.sqrt(n-3)
+        za2 = norm_dist.ppf(1 - alpha/2)
+        return norm_dist.cdf(ncp-za2) + norm_dist.cdf(-ncp-za2)
+    def min_n_req(r, alpha=0.05, power=0.80):
+        za2 = norm_dist.ppf(1-alpha/2)
+        zb  = norm_dist.ppf(power)
+        return int(np.ceil(((za2+zb)/fisher_z(r))**2 + 3))
 
-            # ── Tab 2 ─────────────────────────────────────────────────────────
-            dcc.Tab(label="Cross-Night View", value="tab-cross",
-                    style=TAB_STYLE, selected_style=TAB_SEL, children=[
-                html.Div(style={**CARD,"display":"grid",
-                                "gridTemplateColumns":"1fr 1fr","gap":"16px"}, children=[
-                    html.Div([html.H4("Duration & Score Trend",style={"color":ACC,"marginTop":0}),
-                              dcc.Graph(figure=FIG_TREND, config={"displayModeBar":False})]),
-                    html.Div([html.H4("Stage Composition per Night",style={"color":ACC,"marginTop":0}),
-                              dcc.Graph(figure=FIG_STACK, config={"displayModeBar":False})]),
-                ]),
-                html.Div(style=CARD, children=[
-                    html.H4("Env Variable vs Sleep Score (Spearman)",
-                            style={"color":ACC,"marginTop":0}),
-                    dcc.Dropdown(id="env-var-select", clearable=False,
-                        options=[
-                            {"label":"Indoor Humidity",     "value":"inside_humidity_mean"},
-                            {"label":"Indoor Temperature",  "value":"inside_temperature_mean"},
-                            {"label":"Outdoor Temperature", "value":"outdoor_temperature_mean"},
-                            {"label":"Wind Speed",          "value":"wind_speed_mean"},
-                            {"label":"Outdoor Humidity",    "value":"outdoor_humidity_mean"},
-                        ],
-                        value="inside_humidity_mean",
-                        style={"width":"300px","color":"#111","marginBottom":"12px"},
-                    ),
-                    dcc.Graph(id="scatter-corr", config={"displayModeBar":False}),
-                ]),
-            ]),
+    EFFECTS = [0.3, 0.5, 0.7]
+    LABELS  = ["r = 0.30 (small)", "r = 0.50 (medium)", "r = 0.70 (large)"]
+    COLORS  = ["#EF5350","#FF9800","#4CAF50"]
 
-            # ── Tab 3 ─────────────────────────────────────────────────────────
-            dcc.Tab(label="Model Insights", value="tab-model",
-                    style=TAB_STYLE, selected_style=TAB_SEL, children=[
-                html.Div(style={**CARD,"display":"grid",
-                                "gridTemplateColumns":"1fr 1fr","gap":"16px"}, children=[
-                    html.Div([html.H4("Nightly Correlation Heatmap (Spearman)",
-                                      style={"color":ACC,"marginTop":0}),
-                              dcc.Graph(figure=FIG_CORR, config={"displayModeBar":False})]),
-                    html.Div([html.H4("RF Feature Importance → Sleep Stage",
-                                      style={"color":ACC,"marginTop":0}),
-                              dcc.Graph(figure=FIG_FEAT, config={"displayModeBar":False})]),
-                ]),
-                html.Div(style=CARD, children=[
-                    html.H4("Stage Transition Matrix (pooled, 9 nights)",
-                            style={"color":ACC,"marginTop":0}),
-                    dcc.Graph(figure=FIG_TRANSITION, config={"displayModeBar":False}),
-                ]),
-            ]),
-        ]),
-    ]
-)
+    st.subheader("A Priori: Minimum Sample Size Required (power = 0.80)")
+    ap_rows = []
+    for r, lbl in zip(EFFECTS, LABELS):
+        n_req = min_n_req(r)
+        pwr_cur = power_from_n(r, N)
+        ap_rows.append({
+            "Effect size": lbl,
+            "Fisher z_r": f"{fisher_z(r):.4f}",
+            "Min n required": n_req,
+            f"Achieved power (n={N})": f"{pwr_cur:.3f}",
+            "Status": "Sufficient" if N >= n_req else f"Need {n_req-N} more nights"
+        })
+    st.dataframe(pd.DataFrame(ap_rows).set_index("Effect size"), use_container_width=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Callbacks
-# ══════════════════════════════════════════════════════════════════════════════
-@callback(
-    Output("hypnogram",  "figure"),
-    Output("indoor-env", "figure"),
-    Output("outdoor-env","figure"),
-    Input("night-select","value"),
-)
-def update_night(night_val):
-    grp   = raw[raw["night_date"] == night_val].copy()
-    t     = grp["elapsed_min"].values
-    label = pd.to_datetime(night_val).strftime("%b %d")
-    STAGE_Y = {"REM": 1, "Core": 2, "Deep": 3}
+    st.markdown("---")
+    st.subheader("Power-Sample Size Sensitivity Curve")
+    n_range = np.arange(4, 81)
+    fig_pwr = go.Figure()
+    for r, lbl, col in zip(EFFECTS, LABELS, COLORS):
+        pwr_curve = [power_from_n(r, n) for n in n_range]
+        fig_pwr.add_trace(go.Scatter(x=n_range, y=pwr_curve, name=lbl,
+            mode="lines", line=dict(color=col, width=2.5)))
+        n_req = min_n_req(r)
+        fig_pwr.add_trace(go.Scatter(x=[n_req], y=[0.80], mode="markers",
+            marker=dict(size=10, color=col, symbol="circle"), showlegend=False,
+            hovertemplate=f"{lbl}<br>Min n = {n_req}"))
+    fig_pwr.add_vline(x=N, line_dash="dash", line_color="#5C6BC0", line_width=2,
+        annotation_text=f"Current study (n={N})", annotation_position="top right")
+    fig_pwr.add_hline(y=0.80, line_dash="dot", line_color="#333", line_width=1.5,
+        annotation_text="Target power = 0.80", annotation_position="right")
+    fig_pwr.add_hrect(y0=0, y1=0.80, fillcolor="red", opacity=0.04, line_width=0)
+    fig_pwr.update_layout(
+        xaxis_title="Sample size n (number of nights)",
+        yaxis_title="Statistical Power (1 - beta)",
+        yaxis=dict(range=[0,1.05], dtick=0.1),
+        xaxis=dict(range=[4,80]),
+        height=420, margin=dict(t=20,b=40),
+        legend=dict(x=0.65, y=0.15))
+    st.plotly_chart(fig_pwr, use_container_width=True)
 
-    # Hypnogram
-    fig_h = go.Figure()
-    for _, row in grp.iterrows():
-        fig_h.add_shape(type="rect",
-            x0=row["elapsed_min"], x1=row["elapsed_min"]+15,
-            y0=0.55, y1=STAGE_Y[row["sleep_stage"]]+0.45,
-            fillcolor=STAGE_COLOR[row["sleep_stage"]], opacity=0.4, line_width=0)
-    y_vals = [STAGE_Y[s] for s in grp["sleep_stage"]]
-    fig_h.add_trace(go.Scatter(x=t, y=y_vals, mode="lines",
-        line=dict(color="#eceff1", width=2),
-        hovertemplate="<b>%{text}</b><br>%{x} min<extra></extra>",
-        text=grp["sleep_stage"].tolist(), showlegend=False))
-    for stage, col in STAGE_COLOR.items():
-        fig_h.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
-            marker=dict(size=11, color=col, symbol="square"), name=stage))
-    fig_h.update_layout(**dark(height=240,
-        title=dict(text=f"{label} · {grp['sleep time'].iloc[0]}h · "
-                        f"score {grp['sleep_score'].mean():.2f}", font=dict(size=12)),
-        xaxis_title="Minutes from sleep onset",
-        yaxis=dict(tickvals=[1,2,3], ticktext=["REM","Core","Deep"], range=[0.4,3.75]),
-        legend=dict(orientation="h", x=0.65, y=1.15),
-    ))
-
-    # Indoor
-    fig_i = make_subplots(specs=[[{"secondary_y":True}]])
-    fig_i.add_trace(go.Scatter(x=t, y=grp["inside_temperature"], name="Temp (°C)",
-        line=dict(color="#EF5350",width=2), mode="lines+markers", marker=dict(size=5)),
-        secondary_y=False)
-    fig_i.add_trace(go.Scatter(x=t, y=grp["inside_humidity"], name="Humidity (%)",
-        line=dict(color="#42A5F5",width=2,dash="dash"), mode="lines+markers", marker=dict(size=5)),
-        secondary_y=True)
-    fig_i.update_layout(**dark(height=280, xaxis_title="Elapsed (min)",
-                                legend=dict(x=0.01,y=0.99)))
-    fig_i.update_yaxes(title_text="°C", secondary_y=False)
-    fig_i.update_yaxes(title_text="%",  secondary_y=True)
-
-    # Outdoor
-    fig_o = make_subplots(specs=[[{"secondary_y":True}]])
-    fig_o.add_trace(go.Scatter(x=t, y=grp["outdoor_temperature"], name="Temp (°C)",
-        line=dict(color="#FF7043",width=2), mode="lines+markers", marker=dict(size=5)),
-        secondary_y=False)
-    fig_o.add_trace(go.Scatter(x=t, y=grp["wind_speed"], name="Wind (m/s)",
-        line=dict(color="#26A69A",width=2,dash="dash"), mode="lines+markers", marker=dict(size=5)),
-        secondary_y=True)
-    fig_o.update_layout(**dark(height=280, xaxis_title="Elapsed (min)",
-                                legend=dict(x=0.01,y=0.99)))
-    fig_o.update_yaxes(title_text="°C", secondary_y=False)
-    fig_o.update_yaxes(title_text="m/s", secondary_y=True)
-
-    return fig_h, fig_i, fig_o
-
-
-@callback(Output("scatter-corr","figure"), Input("env-var-select","value"))
-def update_scatter(col):
-    env_labels = {
-        "inside_humidity_mean":     "Indoor Humidity (%)",
-        "inside_temperature_mean":  "Indoor Temperature (°C)",
-        "outdoor_temperature_mean": "Outdoor Temperature (°C)",
-        "wind_speed_mean":          "Wind Speed (m/s)",
-        "outdoor_humidity_mean":    "Outdoor Humidity (%)",
-    }
-    x_v = summ[col].values
-    y_v = summ["mean_sleep_score"].values
-    r, p = stats.spearmanr(x_v, y_v)
-    m, b = np.polyfit(x_v, y_v, 1)
-    x_l  = np.linspace(x_v.min(), x_v.max(), 100)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=x_v, y=y_v, mode="markers+text",
-        text=xlabs, textposition="top right", textfont=dict(size=10),
-        marker=dict(size=11, color=ACC),
-        hovertemplate=f"<b>%{{text}}</b><br>{env_labels.get(col,col)}=%{{x:.2f}}"
-                      "<br>Score=%{y:.3f}<extra></extra>"))
-    fig.add_trace(go.Scatter(x=x_l, y=m*x_l+b, mode="lines",
-        line=dict(color="#EF5350", width=2, dash="dash"),
-        name=f"r={r:+.2f}  p={p:.3f}"))
-    fig.update_layout(**dark(height=380,
-        xaxis_title=env_labels.get(col, col),
-        yaxis_title="Mean Sleep Score",
-        legend=dict(x=0.01, y=0.99)))
-    return fig
-
-
-if __name__ == "__main__":
-    print("\n  Dashboard ready at  http://127.0.0.1:8050\n")
-    app.run(debug=False, port=8050)
+    st.markdown("---")
+    st.subheader("Interpretation")
+    p05 = power_from_n(0.5, N)
+    p03 = power_from_n(0.3, N)
+    st.info(
+        f"At n = {N} nights, this study is adequately powered (1-beta >= 0.80) "
+        f"only to detect large correlations (r >= 0.70). "
+        f"Medium (r=0.50) and small (r=0.30) effects remain underpowered "
+        f"with achieved power of {p05:.2f} and {p03:.2f} respectively. "
+        f"Results should be interpreted as exploratory and hypothesis-generating."
+    )

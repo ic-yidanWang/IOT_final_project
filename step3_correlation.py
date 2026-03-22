@@ -1,18 +1,5 @@
 """
 Step 3 — Time Series Correlation Analysis
-Project: Nocturnal Microclimate vs Sleep Architecture
-------------------------------------------------------
-Three levels of analysis:
-  A. Nightly summary correlation matrix (Pearson + Spearman, n=9)
-  B. Within-night lag cross-correlation  (env variable → sleep score, pooled)
-  C. Per-night Spearman correlation table (inside_temp vs stage_numeric)
-
-Outputs (saved to plots/):
-  fig4_correlation_heatmap.png
-  fig5_cross_correlation_lags.png
-  fig6_pernight_correlation.png
-
-Prints a stats summary to console.
 """
 
 import os
@@ -26,7 +13,7 @@ from scipy.signal import correlate, correlation_lags
 
 warnings.filterwarnings("ignore")
 
-# ── Load ──────────────────────────────────────────────────────────────────────
+# Load
 BASE  = os.path.dirname(os.path.abspath(__file__))
 PLOTS = os.path.join(BASE, "plots")
 os.makedirs(PLOTS, exist_ok=True)
@@ -39,9 +26,7 @@ summ["night_date"] = pd.to_datetime(summ["night_date"])
 STAGE_MAP   = {"REM": 1, "Core": 2, "Deep": 3}
 raw["stage_numeric"] = raw["sleep_stage"].map(STAGE_MAP)
 
-# ══════════════════════════════════════════════════════════════════════════════
 # A. Nightly-level correlation matrix
-# ══════════════════════════════════════════════════════════════════════════════
 env_cols = [
     "inside_temperature_mean", "inside_humidity_mean",
     "outdoor_temperature_mean", "outdoor_humidity_mean",
@@ -49,7 +34,6 @@ env_cols = [
 ]
 sleep_cols = [
     "sleep_duration_h", "mean_sleep_score",
-    "pct_deep", "pct_core", "pct_rem",
 ]
 all_cols = env_cols + sleep_cols
 
@@ -91,7 +75,7 @@ r_spear, p_spear = corr_matrix(data_mat, "spearman")
 
 # Print key results
 print("=" * 60)
-print("A. NIGHTLY CORRELATION  (n=9 nights)")
+print(f"A. NIGHTLY CORRELATION  (n={len(summ)} nights)")
 print("   Focus: env variables → sleep quality metrics")
 print("=" * 60)
 print(f"\n{'Variable':<24} {'vs Sleep Score':>16}  {'vs Deep%':>10}  {'vs Duration':>12}")
@@ -108,11 +92,11 @@ for col in env_cols:
           f"r={r_du:+.3f}{sig_du} p={p_du:.3f}")
 print("\n  (* p<0.05, ~ p<0.10)")
 
-# ── Fig 4: dual heatmap (Pearson | Spearman) ─────────────────────────────────
+# Fig 4: dual heatmap (Pearson | Spearman)
 tick_labels = [labels[c] for c in all_cols]
 
 fig4, (ax_p, ax_s) = plt.subplots(1, 2, figsize=(14, 5.5), constrained_layout=True)
-fig4.suptitle("Fig 4 · Nightly Correlation Matrix  (n = 9 nights)",
+fig4.suptitle(f"Fig 4 · Nightly Correlation Matrix  (n = {len(summ)} nights)",
               fontsize=13, fontweight="bold")
 
 for ax, r_mat, p_mat, title in [
@@ -145,10 +129,8 @@ fig4.savefig(os.path.join(PLOTS, "fig4_correlation_heatmap.png"),
              dpi=150, bbox_inches="tight")
 print("\nSaved: fig4_correlation_heatmap.png")
 
-# ══════════════════════════════════════════════════════════════════════════════
 # B. Within-night lag cross-correlation (pooled across all nights)
 #    Q: does env variable at time t predict sleep score t+lag minutes later?
-# ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
 print("B. LAG CROSS-CORRELATION  (within-night, pooled, 15-min steps)")
 print("=" * 60)
@@ -202,11 +184,11 @@ for raw_col, label in lag_vars:
     best = np.argmax(np.abs(rs))
     print(f"  {label:<20} {lags_x[best]:>+14} min  {rs[best]:>+.3f}")
 
-# ── Fig 5: cross-correlation plots ───────────────────────────────────────────
+# Fig 5: cross-correlation plots
 fig5, axes5 = plt.subplots(2, 2, figsize=(12, 7), constrained_layout=True)
 fig5.suptitle(
     "Fig 5 · Lag Cross-Correlation: Environmental Variables → Sleep Stage\n"
-    "(positive lag = env leads sleep; pooled mean across 9 nights)",
+    f"(positive lag = env leads sleep; pooled mean across {len(summ)} nights)",
     fontsize=12, fontweight="bold")
 
 colors5 = ["#EF5350", "#42A5F5", "#FF7043", "#26A69A"]
@@ -233,10 +215,8 @@ fig5.savefig(os.path.join(PLOTS, "fig5_cross_correlation_lags.png"),
              dpi=150, bbox_inches="tight")
 print("\nSaved: fig5_cross_correlation_lags.png")
 
-# ══════════════════════════════════════════════════════════════════════════════
 # C. Per-night Spearman table + heatmap
 #    Shows how inside_temp & humidity correlate with sleep depth each night
-# ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
 print("C. PER-NIGHT SPEARMAN  (inside_temp & humidity → stage_numeric)")
 print("=" * 60)
@@ -265,7 +245,7 @@ for _, r in pn_df.iterrows():
         print(f"  {r[f'{col}_r']:>+8.3f}{sig}   ", end="")
     print()
 
-# ── Fig 6: per-night heatmap ──────────────────────────────────────────────────
+# Fig 6: per-night heatmap
 r_cols = ["inside_temperature_r", "inside_humidity_r",
           "outdoor_temperature_r", "wind_speed_r"]
 r_labels = ["Indoor\nTemp", "Indoor\nHumid.", "Outdoor\nTemp", "Wind\nSpeed"]
@@ -298,6 +278,64 @@ fig6.colorbar(im6, ax=ax6, label="Spearman ρ", shrink=0.85)
 fig6.savefig(os.path.join(PLOTS, "fig6_pernight_correlation.png"),
              dpi=150, bbox_inches="tight")
 print("\nSaved: fig6_pernight_correlation.png")
+
+plt.show()
+
+
+print("\n" + "=" * 60)
+print("D. DELTA VARIABLE ANALYSIS  (indoor - outdoor differential)")
+print("=" * 60)
+
+# Compute delta columns on the nightly summary
+summ["delta_temp"]     = summ["inside_temperature_mean"] - summ["outdoor_temperature_mean"]
+summ["delta_humidity"] = summ["inside_humidity_mean"]    - summ["outdoor_humidity_mean"]
+
+DELTA_VARS = {
+    "delta_temp":     "dTemp (in - out, C)",
+    "delta_humidity": "dHumidity (in - out, %)",
+}
+SLEEP_TARGETS = {
+    "mean_sleep_score": "Sleep Score",
+    "pct_deep":         "Deep Sleep %",
+    "pct_rem":          "REM %",
+    "sleep_duration_h": "Sleep Duration",
+}
+
+print(f"\n  {'Predictor':<26}  {'Target':<18}  {'Spearman r':>10}  {'p-value':>10}  {'sig'}")
+print("  " + "-" * 72)
+
+delta_rows = []
+for dcol, dlbl in DELTA_VARS.items():
+    for scol, slbl in SLEEP_TARGETS.items():
+        x = summ[dcol].values
+        y = summ[scol].values
+        r_sp, p_sp = stats.spearmanr(x, y)
+        r_pe, p_pe = stats.pearsonr(x, y)
+        sig = "**" if p_sp < 0.01 else ("*" if p_sp < 0.05 else ("~" if p_sp < 0.10 else ""))
+        print(f"  {dlbl:<26}  {slbl:<18}  {r_sp:>+10.3f}  {p_sp:>10.4f}  {sig}")
+        delta_rows.append({
+            "predictor": dlbl, "target": slbl,
+            "rho": r_sp, "p_spearman": p_sp,
+            "r_pearson": r_pe, "p_pearson": p_pe,
+        })
+
+delta_df = pd.DataFrame(delta_rows)
+
+# Compare delta vs raw correlations for sleep score
+print("\n  Comparison: raw vs delta predictors  (target = Sleep Score)")
+print(f"  {'Variable':<28}  {'Spearman r':>10}  {'p-value':>10}")
+print("  " + "-" * 52)
+for col, lbl in [
+    ("inside_temperature_mean",  "Indoor Temp (raw)"),
+    ("outdoor_temperature_mean", "Outdoor Temp (raw)"),
+    ("delta_temp",               "dTemp (in - out)"),
+    ("inside_humidity_mean",     "Indoor Humidity (raw)"),
+    ("outdoor_humidity_mean",    "Outdoor Humidity (raw)"),
+    ("delta_humidity",           "dHumidity (in - out)"),
+]:
+    r, p = stats.spearmanr(summ[col], summ["mean_sleep_score"])
+    sig = "**" if p < 0.01 else ("*" if p < 0.05 else ("~" if p < 0.10 else ""))
+    print(f"  {lbl:<28}  {r:>+10.3f}  {p:>10.4f}  {sig}")
 
 plt.show()
 print("\nStep 3 complete.")

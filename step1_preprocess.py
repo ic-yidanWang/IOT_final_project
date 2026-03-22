@@ -1,13 +1,5 @@
 """
 Step 1 — Data Merging & Preprocessing
-Project: Nocturnal Microclimate vs Sleep Architecture
-------------------------------------------------------
-Just drop new sleep_YYYY-MM-DD.csv files into the folder and re-run —
-the script picks them up automatically.
-
-Outputs:
-  data/all_nights_raw.csv     — merged per-15-min records (detailed)
-  data/nightly_summary.csv    — one row per night (for correlation analysis)
 """
 
 import glob
@@ -16,7 +8,7 @@ import re
 import pandas as pd
 import numpy as np
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# Config
 DATA_DIR   = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(DATA_DIR, "data")
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -24,8 +16,8 @@ os.makedirs(OUT_DIR, exist_ok=True)
 # Sleep stage → ordinal score (higher = deeper / more restorative)
 STAGE_MAP = {"REM": 1, "Core": 2, "Deep": 3}
 
-# ── Load all nightly files ────────────────────────────────────────────────────
-pattern = os.path.join(DATA_DIR, "sleep_2026-*.csv")
+# Load all nightly files
+pattern = os.path.join(DATA_DIR, "data", "sleep_logs", "sleep_2026-*.csv")
 files = sorted([
     f for f in glob.glob(pattern)
     if "_empty" not in f and "副本" not in f and "_filled" not in f
@@ -80,18 +72,18 @@ for path in files:
 
     frames.append(df)
 
-# ── Merge ─────────────────────────────────────────────────────────────────────
+# Merge
 all_df = pd.concat(frames, ignore_index=True)
 all_df = all_df.sort_values(["night_date", "timestamp"]).reset_index(drop=True)
 
 print(f"\nMerged dataset: {len(all_df)} rows across {all_df['night_date'].nunique()} nights")
 
-# ── Save raw merged file ───────────────────────────────────────────────────────
+# Save raw merged file
 raw_path = os.path.join(OUT_DIR, "all_nights_raw.csv")
 all_df.to_csv(raw_path, index=False)
 print(f"Saved: {raw_path}")
 
-# ── Per-night summary ─────────────────────────────────────────────────────────
+# Per-night summary
 env_cols = [
     "outdoor_temperature", "outdoor_humidity", "precipitation",
     "wind_speed", "inside_temperature", "inside_humidity"
@@ -128,7 +120,7 @@ summary_df = pd.DataFrame(summaries)
 summary_df["night_date"] = pd.to_datetime(summary_df["night_date"])
 summary_df = summary_df.sort_values("night_date").reset_index(drop=True)
 
-# ── Print summary table ───────────────────────────────────────────────────────
+# Print summary table
 print("\n── Nightly Summary ──────────────────────────────────────────────────────")
 display_cols = [
     "night_date", "sleep_duration_h", "mean_sleep_score",
