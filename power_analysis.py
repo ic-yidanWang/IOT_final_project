@@ -1,17 +1,5 @@
 """
 Power Analysis — Nocturnal Microclimate vs Sleep Architecture
-=============================================================
-Three outputs:
-  1. A priori  : minimum n for r = 0.3 / 0.5 / 0.7  (a=0.05, power=0.80, two-tailed)
-  2. Post-hoc  : actual power for current study at those effect sizes
-  3. Figure    : power–vs–n sensitivity curves  →  plots/power_analysis.png
-
-Method: Fisher z-transformation (standard approach for Pearson/Spearman r)
-  z_r  = arctanh(r)
-  SE   = 1 / sqrt(n - 3)
-  NCP  = z_r * sqrt(n - 3)
-  Power (two-tailed) = Φ(NCP - z_{a/2}) + Φ(-NCP - z_{a/2})
-                     ≈ Φ(NCP - z_{a/2})   when NCP >> 0
 """
 
 import os
@@ -21,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.stats import norm
 
-# ── Config ─────────────────────────────────────────────────────────────────────
+# Config
 BASE   = os.path.dirname(os.path.abspath(__file__))
 PLOTS  = os.path.join(BASE, "plots")
 os.makedirs(PLOTS, exist_ok=True)
@@ -41,7 +29,7 @@ z_alpha2 = norm.ppf(1 - ALPHA / 2)   # 1.959 …
 z_beta   = norm.ppf(TARGET_PWR)       # 0.842 …
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# Helpers
 def fisher_z(r):
     """Fisher z-transform of r."""
     return np.arctanh(r)
@@ -67,9 +55,7 @@ def min_n(r, alpha=0.05, power=0.80):
     return int(np.ceil(n_exact))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 # 1.  A priori power analysis
-# ══════════════════════════════════════════════════════════════════════════════
 print("=" * 60)
 print(f"A PRIORI POWER ANALYSIS  (a={ALPHA}, power={TARGET_PWR})")
 print(f"Method: Fisher z-transformation (two-tailed)")
@@ -87,10 +73,7 @@ print(f"\n  Critical z (a/2) = {z_alpha2:.4f}")
 print(f"  z_b  (power=0.80) = {z_beta:.4f}")
 print(f"  Formula: n = ceil(((z_{{a/2}} + z_b) / z_r)^2 + 3)")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
 # 2.  Post-hoc power analysis
-# ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
 print(f"POST-HOC POWER ANALYSIS  (n = {N_STUDY} nights, a = {ALPHA})")
 print("=" * 60)
@@ -116,9 +99,7 @@ for r, lbl in zip(EFFECTS, EFFECT_LBLS):
     print(f"  {lbl}: {msg}  |  1-b = {pwr:.3f}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 # 3.  Sensitivity figure
-# ══════════════════════════════════════════════════════════════════════════════
 n_range = np.arange(4, 81, 1)
 
 fig, ax = plt.subplots(figsize=(10, 6), constrained_layout=True)
