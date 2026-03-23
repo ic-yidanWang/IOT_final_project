@@ -58,25 +58,20 @@ https://ic-yidanwang-iot-final-project-step6-dashboard-1va1uq.streamlit.app/
 ## Analytical Journey
 
 **Data collection & cleaning**
-Raw nightly sleep exports from Apple Watch were merged with 15-minute environmental readings from the Arduino DHT22 sensor and OpenWeatherMap API. The Mar 3 recording had a 3-hour gap; missing values were imputed using linear regression on adjacent observations before the night was included in the dataset.
-
+Raw nightly sleep exports from Apple Watch were merged with 15-minute environmental readings from the Arduino DHT11 sensor and OpenWeatherMap API. The Mar 3 recording had a 3-hour gap; missing values were imputed using polynomial regression on adjacent observations before the night was included in the dataset.
 **Descriptive exploration**
 Nightly distributions and boxplots were inspected to establish the range and variability of each variable. Indoor temperature was relatively stable (18.6–22.0°C), while outdoor temperature and wind speed showed considerably more night-to-night variation.
-
 **Normality testing → method selection (Fig 0c–0e)**
 Shapiro-Wilk tests revealed that Sleep Score and Deep Sleep proportion were mildly non-normal (p = 0.033 and p = 0.035). Given the small sample, the Central Limit Theorem cannot be assumed to hold, so both Spearman rank correlation and Pearson r were computed throughout as complementary measures.
-
 **Cross-night correlation matrix (Fig 4)**
 Bivariate correlations between all environmental predictors and sleep outcomes showed directional trends — indoor humidity negatively associated with sleep score (ρ = −0.32), indoor temperature positively associated with deep sleep (ρ = +0.38) — but none reached statistical significance (all p > 0.20). This raised the immediate hypothesis that the study was underpowered rather than the effects being absent.
-
 **Stage-level scatter analysis (Fig 3a–3c)**
 Breaking the outcome down by sleep stage showed that REM proportion was insensitive to all environmental variables (all |ρ| ≤ 0.34), whereas sleep score and deep sleep showed the moderate trends noted above. This narrowed the plausible mechanism to slow-wave sleep rather than REM architecture.
-
 **Within-night lag cross-correlation (Fig 5)**
-The most informative signal emerged at the within-night timescale. Outdoor temperature coupled most strongly with sleep stage depth at a +15-minute lag (mean r = +0.31), suggesting that the thermal environment *precedes* sleep stage shifts rather than coinciding with them — the closest finding to a causal signal in the study. Indoor temperature peaked at −45 minutes (r = +0.22). Per-night analysis (Fig 6) confirmed that these associations were present on several individual nights but were suppressed by cross-night averaging.
-
+The most informative signal emerged at the within-night timescale. Outdoor temperature coupled most strongly with sleep stage depth at a +15-minute lag (mean r = +0.31), suggesting that the thermal environment precedes sleep stage shifts rather than coinciding with them — the closest finding to a causal signal in the study. Indoor temperature peaked at −45 minutes (r = +0.22), more plausibly reflecting a structural confound whereby deep sleep concentrates in the warmer first half of the night rather than a genuine environmental effect.
+**Per-night Spearman analysis (Fig 6)**
+To examine whether cross-night averaging was suppressing genuine within-night signals, environmental variables were correlated with sleep stage depth separately for each night. Indoor temperature reached significance on several nights (e.g. Mar 9: ρ = +0.51, Feb 26: ρ = +0.48), as did outdoor temperature (Mar 9: ρ = +0.50, Mar 6: ρ = +0.48). However, the direction of indoor temperature was inconsistent across nights, with Mar 2 and Mar 4 showing significant negative associations, confirming that the within-night signal exists but is unstable and likely modulated by unmeasured nightly confounders.
 **Exploratory regression (Fig 10–11)**
-OLS regression (adjusted R² = 0.27, n = 14) showed signs of multicollinearity and overfitting. Ridge regression with LOOCV was applied as a corrective, confirming indoor humidity and wind speed as the most directionally stable predictors under shrinkage. Both results are treated as exploratory given the sample size.
-
+OLS regression (adjusted R² = 0.27, n = 14) showed signs of multicollinearity and overfitting. Ridge regression with LOOCV was applied as a corrective, confirming indoor humidity and wind speed as the most directionally stable predictors under shrinkage. Both results are treated as exploratory given the sample size. An additional analysis using indoor-outdoor differential variables as predictors yielded no meaningful associations with any sleep outcome (all ρ ≤ 0.18, all p > 0.50), suggesting that the thermal buffering capacity of the building does not independently predict sleep quality within this dataset.
 **Power analysis**
 A post-hoc power analysis confirmed that at n = 14, the study has only ~45% power to detect medium-sized effects (|ρ| ≈ 0.35). The entire study is therefore characterised as hypothesis-generating: the directional trends are consistent and interpretable, but confirmation requires a sample of at least 30 nights.
