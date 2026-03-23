@@ -22,18 +22,16 @@ Note: Mar 3 data had a 3-hour gap filled via linear regression imputation.
 │   └── nightly_summary.csv      # Per-night summary (14 rows)
 ├── plots/                       # All generated figures
 ├── scripts/                     # Data capture & utility scripts
-│   ├── capture.py               # Live sensor data collection
 │   ├── data_capture.py          # Alternative capture script
-│   ├── history.py               # Historical weather fetching
 │   └── visualize_sleep.py       # Early-stage visualisation utility
-├── step0_descriptive.py         # Descriptive stats & normality tests (fig0a–fig0c)
+├── step0_descriptive.py         # Descriptive stats & normality tests (fig0a-fig0c)
 ├── step1_preprocess.py          # Data merging & feature engineering
-├── step2_visualize.py           # Scatter plots env vs sleep stages (fig3a–fig3c)
+├── step2_visualize.py           # Scatter plots env vs sleep stages 
 ├── step3_correlation.py         # Correlation & lag analysis (fig4–fig6)
-├── step5_modelling.py           # Regression modelling (fig10–fig12)
+├── step5_modelling.py           # Regression modelling (fig10–fig11)
 ├── step6_dashboard.py           # Interactive Streamlit dashboard
-├── power_analysis.py            # Statistical power analysis
-└── fill_sleep_regression.py     # Mar 3 gap imputation
+├── power_analysis.py            # Statistical power analysis (power_analysis.png)
+└── fill_sleep_regression.py     # Mar 3 gap imputation (sleep_visualization.png)
 ```
 
 ## Running the Dashboard

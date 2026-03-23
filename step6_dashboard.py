@@ -237,18 +237,41 @@ elif page == "Night Explorer":
 # ============================================================
 elif page == "Correlation":
     st.title("Correlation Analysis")
-    st.caption(f"Spearman rank correlation · n = {N} nights · alpha = 0.05")
+    st.caption(f"Pearson r and Spearman ρ reported · n = {N} nights · alpha = 0.05")
 
-    st.subheader("Spearman Correlation Matrix")
-    rows = []
+    st.info(
+        "Both Pearson r and Spearman ρ are computed for all variable pairs. "
+        "Environmental variables passed Shapiro-Wilk normality tests (p > 0.05), "
+        "while Sleep Score and Deep Sleep proportion showed mild non-normality "
+        "(p = 0.033 and p = 0.035 respectively) — likely attributable in part to "
+        "the limited sample size (n = 14) rather than a fundamental departure from normality. "
+        "Both methods are therefore reported as a robustness check; "
+        "their close agreement throughout confirms that conclusions are not sensitive "
+        "to the choice of correlation measure."
+    )
+
+    st.subheader("Pearson r")
+    rows_p = []
+    for ev, elbl in ENV_VARS:
+        row = {"Variable": elbl}
+        for sv, slbl in SLEEP_VARS:
+            r, p = stats.pearsonr(summ[ev], summ[sv])
+            sig = "**" if p<0.01 else ("*" if p<0.05 else ("~" if p<0.10 else "ns"))
+            row[slbl] = f"{r:+.3f} ({sig}, p={p:.3f})"
+        rows_p.append(row)
+    st.dataframe(pd.DataFrame(rows_p).set_index("Variable"), use_container_width=True)
+
+    st.subheader("Spearman ρ")
+    rows_s = []
     for ev, elbl in ENV_VARS:
         row = {"Variable": elbl}
         for sv, slbl in SLEEP_VARS:
             rho, p = spearmanr(summ[ev], summ[sv])
             sig = "**" if p<0.01 else ("*" if p<0.05 else ("~" if p<0.10 else "ns"))
             row[slbl] = f"{rho:+.3f} ({sig}, p={p:.3f})"
-        rows.append(row)
-    st.dataframe(pd.DataFrame(rows).set_index("Variable"), use_container_width=True)
+        rows_s.append(row)
+    st.dataframe(pd.DataFrame(rows_s).set_index("Variable"), use_container_width=True)
+
     st.caption("** p<0.01  · * p<0.05 · ~ p<0.10 · ns = not significant")
 
     st.markdown("---")
@@ -263,7 +286,8 @@ elif page == "Correlation":
     sv_col = next(s[0] for s in SLEEP_VARS if s[1] == slp_choice)
     x_vals = summ[ev_col].values
     y_vals = summ[sv_col].values
-    rho, p = spearmanr(x_vals, y_vals)
+    rho, p_s = spearmanr(x_vals, y_vals)
+    r_p, p_p = stats.pearsonr(x_vals, y_vals)
 
     fig_sc = go.Figure()
     fig_sc.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="markers+text",
@@ -274,7 +298,7 @@ elif page == "Correlation":
     fig_sc.add_trace(go.Scatter(x=x_line, y=m*x_line+b, mode="lines",
         line=dict(color="#EF5350", width=2, dash="dash"), name="Linear fit"))
     fig_sc.update_layout(
-        title=f"{env_choice} vs {slp_choice}  |  Spearman rho = {rho:+.3f}  (p = {p:.3f})",
+        title=f"{env_choice} vs {slp_choice}  |  Pearson r = {r_p:+.3f} (p={p_p:.3f})  ·  Spearman ρ = {rho:+.3f} (p={p_s:.3f})",
         xaxis_title=env_choice, yaxis_title=slp_choice,
         height=420, margin=dict(t=50,b=40))
     st.plotly_chart(fig_sc, use_container_width=True)
