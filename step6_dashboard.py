@@ -60,9 +60,7 @@ st.sidebar.markdown(f"**Study period:** Feb 26 - Mar 11, 2026")
 st.sidebar.markdown(f"**Nights recorded:** {N}")
 st.sidebar.markdown(f"**Total epochs:** {len(raw)}")
 
-# ============================================================
 # PAGE 1 - OVERVIEW
-# ============================================================
 if page == "Overview":
     st.title("Nocturnal Microclimate x Sleep Architecture")
     st.caption("Personal IoT sensing study · London · Feb-Mar 2026")
@@ -151,9 +149,7 @@ if page == "Overview":
             yaxis_title="% RH", height=300, margin=dict(t=40,b=30))
         st.plotly_chart(fig4, use_container_width=True)
 
-# ============================================================
 # PAGE 2 - NIGHT EXPLORER
-# ============================================================
 elif page == "Night Explorer":
     st.title("Night Explorer")
     st.caption("Select a night to view its hypnogram and environmental conditions")
@@ -232,9 +228,7 @@ elif page == "Night Explorer":
             legend=dict(x=0.01,y=0.99), xaxis_title="Minutes from sleep onset")
         st.plotly_chart(fig_out, use_container_width=True)
 
-# ============================================================
 # PAGE 3 - CORRELATION
-# ============================================================
 elif page == "Correlation":
     st.title("Correlation Analysis")
     st.caption(f"Pearson r and Spearman ρ reported · n = {N} nights · alpha = 0.05")
@@ -353,9 +347,7 @@ elif page == "Correlation":
     st.plotly_chart(fig_lag, use_container_width=True)
     st.dataframe(pd.DataFrame(lag_summary).set_index("Variable"), use_container_width=True)
 
-# ============================================================
 # PAGE 4 - SLEEP STRUCTURE
-# ============================================================
 elif page == "Sleep Structure":
     st.title("Sleep Architecture")
     st.caption("Stage transition dynamics · Cycle structure · Efficiency metrics")
@@ -446,9 +438,7 @@ elif page == "Sleep Structure":
         legend=dict(orientation="h", x=0.5, xanchor="center", y=1.06))
     st.plotly_chart(fig_stack, use_container_width=True)
 
-# ============================================================
 # PAGE 5 - POWER ANALYSIS
-# ============================================================
 elif page == "Power Analysis":
     st.title("Statistical Power Analysis")
     st.caption("Fisher z-transformation method · alpha = 0.05 · Two-tailed")
