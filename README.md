@@ -20,10 +20,10 @@ Note: Mar 3 data had a 3-hour gap filled via linear regression imputation.
 │   ├── sleep_logs/              # Raw nightly CSV files (sleep_2026-MM-DD.csv)
 │   ├── all_nights_raw.csv       # Merged 385-row dataset
 │   └── nightly_summary.csv      # Per-night summary (14 rows)
+|   └── weather_log.csv
 ├── plots/                       # All generated figures
 ├── scripts/                     # Data capture & utility scripts
 │   ├── data_capture.py          # Alternative capture script
-│   └── visualize_sleep.py       # Early-stage visualisation utility
 ├── step0_descriptive.py         # Descriptive stats & normality tests (fig0a-fig0c)
 ├── step1_preprocess.py          # Data merging & feature engineering
 ├── step2_visualize.py           # Scatter plots env vs sleep stages 
