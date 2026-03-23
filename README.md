@@ -52,6 +52,9 @@ python power_analysis.py
 # step6_dashboard.py is the interactive front-end, run separately
 ```
 
+## Deployment Link
+https://ic-yidanwang-iot-final-project-step6-dashboard-1va1uq.streamlit.app/
+
 ## Analytical Journey
 
 **Data collection & cleaning**
